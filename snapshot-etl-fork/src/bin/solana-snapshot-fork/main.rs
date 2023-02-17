@@ -14,6 +14,9 @@ use solana_snapshot_fork::{AppendVecIterator, ReadProgressTracking, SnapshotExtr
 use std::fs::{File, OpenOptions};
 use std::io::{stdout, IoSliceMut, Read, Write};
 use std::path::{Path, PathBuf};
+use solana_program::{msg, program_error::ProgramError};
+use crate::math::{Decimal};
+
 
 mod csv;
 mod geyser;
@@ -21,6 +24,10 @@ mod geyser_plugin;
 mod mpl_metadata;
 mod programs;
 mod sqlite;
+mod error_solend;
+mod math;
+pub mod state;
+
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -44,6 +51,33 @@ struct Args {
     geyser: Option<String>,
     #[clap(long, help = "Write programs tar stream")]
     programs_out: Option<String>,
+}
+
+// Helpers
+fn pack_decimal(decimal: Decimal, dst: &mut [u8; 16]) {
+    *dst = decimal
+        .to_scaled_val()
+        .expect("Decimal cannot be packed")
+        .to_le_bytes();
+}
+
+fn unpack_decimal(src: &[u8; 16]) -> Decimal {
+    Decimal::from_scaled_val(u128::from_le_bytes(*src))
+}
+
+fn pack_bool(boolean: bool, dst: &mut [u8; 1]) {
+    *dst = (boolean as u8).to_le_bytes()
+}
+
+fn unpack_bool(src: &[u8; 1]) -> Result<bool, ProgramError> {
+    match u8::from_le_bytes(*src) {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => {
+            msg!("Boolean cannot be unpacked");
+            Err(ProgramError::InvalidAccountData)
+        }
+    }
 }
 
 fn main() {
