@@ -2,7 +2,6 @@ use borsh::BorshDeserialize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error/*,warn*/};
 use rusqlite::{params, Connection};
-use solana_program::account_info::AccountInfo;
 use solana_sdk::program_pack::Pack;
 use solana_snapshot_fork::append_vec::{AppendVec, StoredAccountMeta};
 use solana_snapshot_fork::parallel::{AppendVecConsumer, GenericResult};
@@ -11,10 +10,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use crate::math::{Decimal, Rate, TryAdd, TryDiv, TryMul};
 
-use crate::state::{Obligation, Reserve};
-use crate::error_solend::LendingError;
+use crate::state::{Obligation};
 use crate::mpl_metadata;
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -143,9 +140,8 @@ CREATE TABLE Solend (
     owner TEXT NOT NULL,
     version TEXT NOT NULL,
     lending_market TEXT NOT NULL,
-    deposited_value TEXT NOT NULL,
-    deposits TEXT NOT NULL,
-    deposit_amount TEXT NOT NULL
+    deposit_reserve TEXT NOT NULL,
+    deposit_amount Integer(8) NOT NULL
 );",
             [],
         )?;
@@ -402,15 +398,20 @@ INSERT OR REPLACE INTO token_mint (pubkey, mint_authority, supply, decimals, is_
         }
         let data = Obligation::unpack_unchecked(account.data)?;
         let deposits = data.deposits;
-        let depositReserve = ")";
-        let mut string = String::new();
-        if(deposits.len() > 0){
+        let mut deposit_reserve = "";
+        let mut msol_deposited = 0;
+        if deposits.len() > 0 {
             for i in 0..deposits.len(){
-                string.push_str(bs58::encode(deposits[i].deposit_reserve).into_string().as_str());
-                string.push(',');
-                string.push_str(deposits[i].deposited_amount.to_string().as_str());
-                string.push(';');
+                if bs58::encode(deposits[i].deposit_reserve).into_string() == "CCpirWrgNuBVLdkP2haxLTbD6XqEgaYuVXixbbpxUB6" {
+                    msol_deposited = deposits[i].deposited_amount;
+                    deposit_reserve = "CCpirWrgNuBVLdkP2haxLTbD6XqEgaYuVXixbbpxUB6";
+                    break;
+                }
             }
+        }
+
+        if deposit_reserve == "" {
+            return Ok(());
         }
 
         self.db
@@ -421,19 +422,17 @@ INSERT OR REPLACE INTO Solend (
     owner,
     version,
     lending_market,
-    deposited_value,
-    deposits,
+    deposit_reserve,
     deposit_amount
-) VALUES (?, ?, ?, ?, ?, ?, ?);",
+) VALUES (?, ?, ?, ?, ?, ?);",
             )?
             .insert(params![
                 bs58::encode(account.meta.pubkey.as_ref()).into_string(),
                 bs58::encode(data.owner).into_string(),
                 data.version,
                 bs58::encode(data.lending_market).into_string(),
-                data.deposited_value.try_round_u64()?,
-                depositReserve,
-                string,
+                deposit_reserve,
+                msol_deposited,
             ])?;
 
         Ok(())
