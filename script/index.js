@@ -29,7 +29,6 @@ async function main(){
         if (err) throw err;
         console.log('complete');
     });
-    //console.log(JSON.stringify(data, null, 2));
 
 
 
@@ -69,13 +68,13 @@ async function getMSolHolders() {
 
 
 async function getCMSolHolders() {
-    const result = db.prepare(`SELECT owner, amount, pubkey FROM token_account WHERE mint= ? AND amount>0 ORDER BY amount desc`).all("3JFC4cB56Er45nWVe29Bhnn5GnwQzSmHVf6eUq9ac91h");
+    const result = db.prepare(`SELECT owner, deposit_amount FROM Solend ORDER BY deposit_amount desc`).all();
 
     result.forEach((row) => {
         if(dataCMSolHolders[row.owner] == undefined){
-            dataCMSolHolders[row.owner] = row.amount*toUi;
+            dataCMSolHolders[row.owner] = row.deposit_amount*toUi;
         }else{
-            dataCMSolHolders[row.owner] += row.amount*toUi;
+            dataCMSolHolders[row.owner] += row.deposit_amount*toUi;
         }
 
         if(owners.indexOf(row.owner) == -1){
