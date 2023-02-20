@@ -21,6 +21,10 @@ mod geyser_plugin;
 mod mpl_metadata;
 mod programs;
 mod sqlite;
+mod error_solend;
+mod math;
+pub mod state;
+
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

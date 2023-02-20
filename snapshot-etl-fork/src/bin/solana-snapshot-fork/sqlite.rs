@@ -11,8 +11,8 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::state::{Obligation};
 use crate::mpl_metadata;
-
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub(crate) struct SqliteIndexer {
@@ -133,6 +133,18 @@ CREATE TABLE token_account (
 );",
             [],
         )?;
+        db.execute(
+            "\
+CREATE TABLE Solend (
+    pubkey TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    version TEXT NOT NULL,
+    lending_market TEXT NOT NULL,
+    deposit_reserve TEXT NOT NULL,
+    deposit_amount Integer(8) NOT NULL
+);",
+            [],
+        )?;
 //         db.execute(
 //             "\
 // CREATE TABLE token_multisig (
@@ -210,6 +222,10 @@ impl<'a> Worker<'a> {
         let filter_account_owners = "QMNeHCGYnLVDn1icRAfQZpjPLBNkfGbSKRB83G5d8KB,11111111111111111111111111111111";
         let filter_account_mints = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So,3JFC4cB56Er45nWVe29Bhnn5GnwQzSmHVf6eUq9ac91h,6UA3yn28XecAHLTwoCtjfzy3WcyQj1x13bxnH8urUiKt,5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4,4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf,Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8,7iKG16aukdXXw43MowbfrGqXhAoYe51iVR9u2Nf2dCEY";
         self.progress.accounts_counter.inc();
+        if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo") && account.data.len() == 1300 {
+            self.insert_metadata_solend(account)?;    
+            self.insert_account_meta(account)?;       
+        }
         if filter_account_owners.contains(bs58::encode(account.account_meta.owner.as_ref()).into_string().as_str()) {
             self.insert_account_meta(account)?;
             //self.progress.accounts_counter.inc();
@@ -373,6 +389,52 @@ INSERT OR REPLACE INTO token_mint (pubkey, mint_authority, supply, decimals, is_
             }
             _ => return Ok(()), // TODO
         }
+        Ok(())
+    }
+
+    fn insert_metadata_solend(&mut self, account: &StoredAccountMeta) -> Result<()> {
+        if account.data.is_empty() && account.data.len() < 1300 {
+            return Ok(());
+        }
+        let data = Obligation::unpack_unchecked(account.data)?;
+        let deposits = data.deposits;
+        let mut deposit_reserve = "";
+        let mut msol_deposited = 0;
+        if deposits.len() > 0 {
+            for i in 0..deposits.len(){
+                if bs58::encode(deposits[i].deposit_reserve).into_string() == "CCpirWrgNuBVLdkP2haxLTbD6XqEgaYuVXixbbpxUB6" {
+                    msol_deposited = deposits[i].deposited_amount;
+                    deposit_reserve = "CCpirWrgNuBVLdkP2haxLTbD6XqEgaYuVXixbbpxUB6";
+                    break;
+                }
+            }
+        }
+
+        if deposit_reserve == "" {
+            return Ok(());
+        }
+
+        self.db
+            .prepare_cached(
+                "\
+INSERT OR REPLACE INTO Solend (
+    pubkey,
+    owner,
+    version,
+    lending_market,
+    deposit_reserve,
+    deposit_amount
+) VALUES (?, ?, ?, ?, ?, ?);",
+            )?
+            .insert(params![
+                bs58::encode(account.meta.pubkey.as_ref()).into_string(),
+                bs58::encode(data.owner).into_string(),
+                data.version,
+                bs58::encode(data.lending_market).into_string(),
+                deposit_reserve,
+                msol_deposited,
+            ])?;
+
         Ok(())
     }
 
