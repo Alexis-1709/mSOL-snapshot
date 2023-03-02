@@ -10,6 +10,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use whirlpool::{
+    state::{Whirlpool, Position},
+    math::tick_math::{sqrt_price_from_tick_index},
+ };
+use anchor_lang::prelude::*;
 
 use crate::state::{Obligation};
 use crate::mpl_metadata;
@@ -135,13 +140,37 @@ CREATE TABLE token_account (
         )?;
         db.execute(
             "\
-CREATE TABLE Solend (
+CREATE TABLE solend (
     pubkey TEXT NOT NULL,
     owner TEXT NOT NULL,
     version TEXT NOT NULL,
     lending_market TEXT NOT NULL,
     deposit_reserve TEXT NOT NULL,
     deposit_amount Integer(8) NOT NULL
+);",
+            [],
+        )?;
+        db.execute(
+            "\
+CREATE TABLE orca  (
+    pubkey TEXT NOT NULL PRIMARY KEY,
+    data_len INTEGER(8) NOT NULL,
+    position_mint TEXT NOT NULL,
+    pool TEXT NOT NULL,
+    price_lower INTEGER(8) NOT NULL, 
+    price_upper INTEGER(8) NOT NULL, 
+    liquidity INTEGER(8) NOT NULL
+);",
+            [],
+        )?;
+        db.execute(
+            "\
+CREATE TABLE whirlpool_pools  (
+    pubkey TEXT NOT NULL PRIMARY KEY,
+    data_len INTEGER(8) NOT NULL,
+    token_a TEXT NOT NULL,
+    token_b TEXT NOT NULL,
+    sqrt_price INTEGER(8) NOT NULL
 );",
             [],
         )?;
@@ -165,6 +194,7 @@ CREATE TABLE token_metadata (
     name TEXT NOT NULL,
     symbol TEXT(10) NOT NULL,
     uri TEXT(200) NOT NULL,
+    data_length INTEGER(8) NOT NULL,
     seller_fee_basis_points INTEGER(4) NOT NULL,
     primary_sale_happened INTEGER(1) NOT NULL,
     is_mutable INTEGER(1) NOT NULL,
@@ -220,15 +250,19 @@ impl<'a> AppendVecConsumer for Worker<'a> {
 impl<'a> Worker<'a> {
     fn insert_account(&mut self, account: &StoredAccountMeta) -> Result<()> {
         let filter_account_owners = "QMNeHCGYnLVDn1icRAfQZpjPLBNkfGbSKRB83G5d8KB,11111111111111111111111111111111";
-        let filter_account_mints = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So,3JFC4cB56Er45nWVe29Bhnn5GnwQzSmHVf6eUq9ac91h,6UA3yn28XecAHLTwoCtjfzy3WcyQj1x13bxnH8urUiKt,5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4,4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf,Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8,7iKG16aukdXXw43MowbfrGqXhAoYe51iVR9u2Nf2dCEY";
+        let filter_account_mints = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So,3JFC4cB56Er45nWVe29Bhnn5GnwQzSmHVf6eUq9ac91h,6UA3yn28XecAHLTwoCtjfzy3WcyQj1x13bxnH8urUiKt,5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4,4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf,Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8,7iKG16aukdXXw43MowbfrGqXhAoYe51iVR9u2Nf2dCEY,8cn7JcYVjDZesLa3RTt3NXne4WcDw9PdUneQWuByehwW,7HqhfUqig7kekN8FbJCtQ36VgdXKriZWQ62rTve9ZmQ,SoLEao8wTzSfqhuou8rcYsVoLjthVmiXuEjzdNPMnCz";
         self.progress.accounts_counter.inc();
-        if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo") && account.data.len() == 1300 {
+        if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo") && account.data.len() == 1300 { //Dump solend token accounts
             self.insert_metadata_solend(account)?;    
-            self.insert_account_meta(account)?;       
+        }
+        if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc") && account.data.len() == 216 { //Dump only whirlpool positions accounts
+            self.insert_orca(account)?;
+        }
+        if bs58::encode(account.meta.pubkey).into_string().contains("AiMZS5U3JMvpdvsr1KeaMiS354Z1DeSg5XjA4yYRxtFf") { //Whirlpool pool address
+            self.insert_whirlpool_pool(account)?;
         }
         if filter_account_owners.contains(bs58::encode(account.account_meta.owner.as_ref()).into_string().as_str()) {
             self.insert_account_meta(account)?;
-            //self.progress.accounts_counter.inc();
         }
         if account.account_meta.owner == mpl_metadata::id() {
             self.insert_token_metadata(account)?;
@@ -237,7 +271,7 @@ impl<'a> Worker<'a> {
             spl_token::state::Account::LEN => {
                 if let Ok(token_account) = spl_token::state::Account::unpack(account.data) {
                     let token_account_mint = bs58::encode(token_account.mint.as_ref()).into_string();
-                    if !filter_account_mints.contains(token_account_mint.as_str()) {
+                    if !filter_account_mints.contains(token_account_mint.as_str()) && token_account.amount != 1 {
                         return Ok(());
                     }
                     self.insert_account_meta(account)?;
@@ -392,6 +426,58 @@ INSERT OR REPLACE INTO token_mint (pubkey, mint_authority, supply, decimals, is_
         Ok(())
     }
 
+    
+
+    fn insert_token_metadata_metadata(
+        &mut self,
+        account: &StoredAccountMeta,
+        meta_v1: &mpl_metadata::Metadata,
+        meta_v1_1: Option<&mpl_metadata::MetadataExt>,
+        meta_v1_2: Option<&mpl_metadata::MetadataExtV1_2>,
+    ) -> Result<()> {
+        let collection = meta_v1_2.as_ref().and_then(|m| m.collection.as_ref());
+        if !meta_v1.data.name.as_str().contains("Raydium Concentrated Liquidity") && !meta_v1.data.name.as_str().contains("Orca Whirlpool Position") { 
+            return Ok(());
+        }
+        
+        self.progress.metaplex_accounts_counter.inc();
+        self.db
+            .prepare_cached(
+                "\
+INSERT OR REPLACE INTO token_metadata (
+    pubkey,
+    mint,
+    update_authority,
+    name,
+    symbol,
+    uri,
+    data_length,
+    seller_fee_basis_points,
+    primary_sale_happened,
+    is_mutable,
+    edition_nonce,
+    collection_verified,
+    collection_key
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            )?
+            .insert(params![
+                bs58::encode(account.meta.pubkey.as_ref()).into_string(),
+                bs58::encode(meta_v1.mint.as_ref()).into_string(),
+                bs58::encode(meta_v1.update_authority.as_ref()).into_string(),
+                meta_v1.data.name,
+                meta_v1.data.symbol,
+                meta_v1.data.uri,
+                account.data.len(),
+                meta_v1.data.seller_fee_basis_points,
+                meta_v1.primary_sale_happened,
+                meta_v1.is_mutable,
+                meta_v1_1.map(|c| c.edition_nonce),
+                collection.map(|c| c.verified),
+                collection.map(|c| c.key.as_ref()),
+            ])?;
+        Ok(())
+    }
+
     fn insert_metadata_solend(&mut self, account: &StoredAccountMeta) -> Result<()> {
         if account.data.is_empty() && account.data.len() < 1300 {
             return Ok(());
@@ -417,7 +503,7 @@ INSERT OR REPLACE INTO token_mint (pubkey, mint_authority, supply, decimals, is_
         self.db
             .prepare_cached(
                 "\
-INSERT OR REPLACE INTO Solend (
+INSERT OR REPLACE INTO solend (
     pubkey,
     owner,
     version,
@@ -438,50 +524,48 @@ INSERT OR REPLACE INTO Solend (
         Ok(())
     }
 
-    fn insert_token_metadata_metadata(
-        &mut self,
-        account: &StoredAccountMeta,
-        meta_v1: &mpl_metadata::Metadata,
-        meta_v1_1: Option<&mpl_metadata::MetadataExt>,
-        meta_v1_2: Option<&mpl_metadata::MetadataExtV1_2>,
-    ) -> Result<()> {
-        let collection = meta_v1_2.as_ref().and_then(|m| m.collection.as_ref());
-        if !meta_v1.data.name.as_str().contains("Orca Whirlpool Position") && !meta_v1.data.name.as_str().contains("Raydium Concentrated Liquidity") { 
+    fn insert_orca(&mut self, account: &StoredAccountMeta) -> Result<()> {
+        let mut account_data = account.data;
+        let position = Position::try_deserialize( &mut account_data)?;
+        if bs58::encode(position.whirlpool).into_string() != "AiMZS5U3JMvpdvsr1KeaMiS354Z1DeSg5XjA4yYRxtFf" {
             return Ok(());
         }
-        self.progress.metaplex_accounts_counter.inc();
-        self.db
-            .prepare_cached(
-                "\
-INSERT OR REPLACE INTO token_metadata (
-    pubkey,
-    mint,
-    update_authority,
-    name,
-    symbol,
-    uri,
-    seller_fee_basis_points,
-    primary_sale_happened,
-    is_mutable,
-    edition_nonce,
-    collection_verified,
-    collection_key
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-            )?
-            .insert(params![
-                bs58::encode(account.meta.pubkey.as_ref()).into_string(),
-                bs58::encode(meta_v1.mint.as_ref()).into_string(),
-                bs58::encode(meta_v1.update_authority.as_ref()).into_string(),
-                meta_v1.data.name,
-                meta_v1.data.symbol,
-                meta_v1.data.uri,
-                meta_v1.data.seller_fee_basis_points,
-                meta_v1.primary_sale_happened,
-                meta_v1.is_mutable,
-                meta_v1_1.map(|c| c.edition_nonce),
-                collection.map(|c| c.verified),
-                collection.map(|c| c.key.as_ref()),
-            ])?;
+        let sqrt_price_lower = sqrt_price_from_tick_index(position.tick_lower_index);
+        let sqrt_price_upper = sqrt_price_from_tick_index(position.tick_upper_index);
+        
+        let mut account_insert = self.db.prepare_cached(
+            "\
+INSERT OR REPLACE INTO orca (pubkey, data_len, position_mint, pool, price_lower, price_upper, liquidity)
+    VALUES (?, ?, ?, ?, ?, ?, ?);",
+        )?;
+        account_insert.insert(params![
+            bs58::encode(account.meta.pubkey).into_string(),
+            account.meta.data_len as i64,
+            bs58::encode(position.position_mint).into_string(),
+            bs58::encode(position.whirlpool).into_string(),
+            sqrt_price_lower as i64,
+            sqrt_price_upper as i64,
+            position.liquidity as i64,
+        ])?;
+        Ok(())
+    }
+
+    fn insert_whirlpool_pool(&mut self, account: &StoredAccountMeta) -> Result<()> {
+        let mut account_data = account.data;
+        let whirlpool = Whirlpool::try_deserialize( &mut account_data)?;
+        
+        let mut account_insert = self.db.prepare_cached(
+            "\
+INSERT OR REPLACE INTO whirlpool_pools (pubkey, data_len, token_a, token_b, sqrt_price)
+    VALUES (?, ?, ?, ?, ?);",
+        )?;
+        account_insert.insert(params![
+            bs58::encode(account.meta.pubkey).into_string(),
+            account.meta.data_len as i64,
+            whirlpool.token_mint_a.to_string(),
+            whirlpool.token_mint_b.to_string(),
+            whirlpool.sqrt_price as i64,
+        ])?;
         Ok(())
     }
 }
