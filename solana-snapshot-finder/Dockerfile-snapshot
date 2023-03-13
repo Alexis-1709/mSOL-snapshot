@@ -1,0 +1,14 @@
+FROM python:3.9.6-slim
+
+RUN apt-get update \
+    && apt-get install -y wget git 
+
+WORKDIR /app
+
+COPY . .
+
+RUN pip3 install -r requirements.txt --no-cache-dir
+
+CMD [ "python3", "test.py" ]
+
+# CMD [ "python3", "snapshot-finder.py", "--max_latency", "400", "--min_download_speed", "1", "--snapshot_path", "/data" ]
