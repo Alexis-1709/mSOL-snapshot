@@ -1,0 +1,14 @@
+FROM rust
+
+WORKDIR /
+
+COPY . .
+
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+    export PATH="$HOME/.cargo/bin:$PATH"
+
+RUN cargo install --path=./ --features=standalone --bins
+
+CMD [ "solana-snapshot-fork", "/data/snapshot_downloaded1.tar.zst", "--sqlite-out", "/data/snapshot.db" ]

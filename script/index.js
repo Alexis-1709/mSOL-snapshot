@@ -1,5 +1,5 @@
 const Database = require('better-sqlite3');
-const db = require('better-sqlite3')('./snapshot.db');
+const db = require('better-sqlite3')('./data/snapshot.db');
 const toUi = Math.pow(10, -9);
 var fs = require('fs');
 const axios = require('axios');
@@ -88,8 +88,8 @@ function orcaWhrilpools(){
 function orcaAquafarms(){
     console.info(new Date().toISOString() + " Parsing Orca Aquafarms");
 
-    const mSOL_USDT_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8")[0].supply*Math.pow(10, -6); //Orca Aquafarm mSOL-USDT 
-    const mSOL_in_liq_USDT = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("RTXKRxghfWJpE344UG7UhKnCwN2Gyv6KnNSTFDnaASF")[0].amount*toUi; //Orca Aquafarm mSOL-USDT token account which hold mSOL
+    const mSOL_USDT_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8")[0]?.supply*Math.pow(10, -6); //Orca Aquafarm mSOL-USDT 
+    const mSOL_in_liq_USDT = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("RTXKRxghfWJpE344UG7UhKnCwN2Gyv6KnNSTFDnaASF")[0]?.amount*toUi; //Orca Aquafarm mSOL-USDT token account which hold mSOL
     const mSOL_per_LP_USDT = mSOL_in_liq_USDT/mSOL_USDT_supply;
     const result = db.prepare(`SELECT token_account.owner, token_account.amount, account.pubkey FROM token_account, account WHERE token_account.mint= ? AND token_account.owner=account.pubkey AND account.owner= ? AND token_account.amount>0 ORDER BY token_account.amount desc`).all(["Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8", "11111111111111111111111111111111"]); //Orca Aquafarm mSOL-USDT & system program 
     const resultDoubleDip = db.prepare(`SELECT token_account.owner, token_account.amount, account.pubkey FROM token_account, account WHERE token_account.mint= ? AND token_account.owner=account.pubkey AND account.owner= ? AND token_account.amount>0 ORDER BY token_account.amount desc`).all(["7iKG16aukdXXw43MowbfrGqXhAoYe51iVR9u2Nf2dCEY", "11111111111111111111111111111111"]); //Orca Double Dip mSOL-USDT & system program
@@ -120,8 +120,8 @@ function orcaAquafarms(){
 function raydiumV2(){
     console.info(new Date().toISOString() + " Parsing Raydium V2");
 
-    const mSOL_USDC_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf")[0].supply*toUi; //Raydium V2 mSOL-USDC
-    const mSOL_in_liq_USDC = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("8JUjWjAyXTMB4ZXcV7nk3p6Gg1fWAAoSck7xekuyADKL")[0].amount*toUi; //Raydium V2 mSOL-USDC token account which hold mSOL
+    const mSOL_USDC_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf")[0]?.supply*toUi; //Raydium V2 mSOL-USDC
+    const mSOL_in_liq_USDC = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("8JUjWjAyXTMB4ZXcV7nk3p6Gg1fWAAoSck7xekuyADKL")[0]?.amount*toUi; //Raydium V2 mSOL-USDC token account which hold mSOL
     const mSOL_per_LP_USDC = mSOL_in_liq_USDC/mSOL_USDC_supply;
 
     const result = db.prepare(`SELECT token_account.owner, token_account.amount, account.pubkey FROM token_account, account WHERE token_account.mint= ? AND token_account.owner=account.pubkey AND account.owner= ? AND token_account.amount>0 ORDER BY token_account.amount desc`).all(["4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf", "11111111111111111111111111111111"]); //Raydium V2 mSOL-USDC & system program
@@ -137,8 +137,8 @@ function raydiumV2(){
         }
     });
 
-    const mSOL_SOL_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4")[0].supply*toUi; //Raydium V2 mSOL-SOL
-    const mSOL_in_liq_SOL = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("85SxT7AdDQvJg6pZLoDf7vPiuXLj5UYZLVVNWD1NjnFK")[0].amount*toUi; //Raydium V2 mSOL-SOL token account which hold mSOL
+    const mSOL_SOL_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4")[0]?.supply*toUi; //Raydium V2 mSOL-SOL
+    const mSOL_in_liq_SOL = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("85SxT7AdDQvJg6pZLoDf7vPiuXLj5UYZLVVNWD1NjnFK")[0]?.amount*toUi; //Raydium V2 mSOL-SOL token account which hold mSOL
     const mSOL_per_LP_SOL = mSOL_in_liq_SOL/mSOL_SOL_supply;
 
     const result2 = db.prepare(`SELECT token_account.owner, token_account.amount, account.pubkey FROM token_account, account WHERE token_account.mint= ? AND token_account.owner=account.pubkey AND account.owner= ? AND token_account.amount>0 ORDER BY token_account.amount desc`).all(["5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4", "11111111111111111111111111111111"]); //Raydium V2 mSOL-SOL & system program
@@ -192,8 +192,8 @@ function tulip(){
 function mercurial(){
     console.info(new Date().toISOString() + " Parsing Mercurial");
 
-    const mSOL_2Pool_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("7HqhfUqig7kekN8FbJCtQ36VgdXKriZWQ62rTve9ZmQ")[0].supply*Math.pow(10, -12); //Mercurial mSOL-2Pool
-    const mSOL_in_liq = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("GM48qFn8rnqhyNMrBHyPJgUVwXQ1JvMbcu3b9zkThW9L")[0].amount*Math.pow(10, -12); //Mercurial mSOL-2Pool token account which hold mSOL
+    const mSOL_2Pool_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("7HqhfUqig7kekN8FbJCtQ36VgdXKriZWQ62rTve9ZmQ")[0]?.supply*Math.pow(10, -12); //Mercurial mSOL-2Pool
+    const mSOL_in_liq = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("GM48qFn8rnqhyNMrBHyPJgUVwXQ1JvMbcu3b9zkThW9L")[0]?.amount*Math.pow(10, -12); //Mercurial mSOL-2Pool token account which hold mSOL
     const mSOL_per_LP = mSOL_in_liq/mSOL_2Pool_supply;
     const result = db.prepare(`SELECT token_account.owner, token_account.amount, account.pubkey FROM token_account, account WHERE token_account.mint= ? AND token_account.owner=account.pubkey AND account.owner= ? AND token_account.amount>0 ORDER BY token_account.amount desc`).all(["7HqhfUqig7kekN8FbJCtQ36VgdXKriZWQ62rTve9ZmQ", "11111111111111111111111111111111"]); //Mercurial mSOL-2Pool & system program
     result.forEach((row) => {
@@ -212,8 +212,8 @@ function mercurial(){
 function saber(){
     console.info(new Date().toISOString() + " Parsing Saber");
 
-    const mSOL_SOL_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("SoLEao8wTzSfqhuou8rcYsVoLjthVmiXuEjzdNPMnCz")[0].supply*toUi; //Saber mSOL-SOL
-    const mSOL_in_liq = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("9DgFSWkPDGijNKcLGbr3p5xoJbHsPgXUTr6QvGBJ5vGN")[0].amount*toUi; //Saber mSOL-SOL token account which hold mSOL
+    const mSOL_SOL_supply = db.prepare(`SELECT supply FROM token_mint WHERE pubkey= ?`).all("SoLEao8wTzSfqhuou8rcYsVoLjthVmiXuEjzdNPMnCz")[0]?.supply*toUi; //Saber mSOL-SOL
+    const mSOL_in_liq = db.prepare(`SELECT amount FROM token_account WHERE pubkey= ?`).all("9DgFSWkPDGijNKcLGbr3p5xoJbHsPgXUTr6QvGBJ5vGN")[0]?.amount*toUi; //Saber mSOL-SOL token account which hold mSOL
     const mSOL_per_LP = mSOL_in_liq/mSOL_SOL_supply;
 
     const result = db.prepare(`SELECT token_account.owner, token_account.amount, account.pubkey FROM token_account, account WHERE token_account.mint= ? AND token_account.owner=account.pubkey AND account.owner= ? AND token_account.amount>0 ORDER BY token_account.amount desc`).all(["SoLEao8wTzSfqhuou8rcYsVoLjthVmiXuEjzdNPMnCz", "11111111111111111111111111111111"]); //Saber mSOL-SOL & system program
@@ -280,7 +280,7 @@ function parseData(){
 function createDbAndDump(){
     console.info(new Date().toISOString() + " Filling the DB");
 
-    const db = new Database('msolData.db');
+    const db = new Database('/data/msolData.db');
     db.exec(`CREATE TABLE data (
         owner VARCHAR(255),
         slot INT,
