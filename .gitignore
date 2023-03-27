@@ -1,0 +1,4 @@
+*.tar.zst
+*.log
+snapshot-etl-fork/target/
+script/node_modules/

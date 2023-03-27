@@ -4,6 +4,9 @@ WORKDIR /
 
 COPY . .
 
-RUN yarn
+RUN yarn --no-cache \
+    && rm -rf /usr/local/share/.cache \
+    && rm -rf /root/.cache \
+    && rm -rf /tmp/*
 
 CMD [ "node", "index.js" ]
