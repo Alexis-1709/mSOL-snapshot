@@ -174,6 +174,15 @@ CREATE TABLE whirlpool_pools  (
 );",
             [],
         )?;
+        db.execute(
+            "\
+CREATE TABLE port (
+    pubkey TEXT NOT NULL PRIMARY KEY,
+    owner TEXT NOT NULL,
+    data TEXT NOT NULL
+);",
+            [],
+        )?;
 //         db.execute(
 //             "\
 // CREATE TABLE token_multisig (
@@ -249,7 +258,7 @@ impl<'a> AppendVecConsumer for Worker<'a> {
 
 impl<'a> Worker<'a> {
     fn insert_account(&mut self, account: &StoredAccountMeta) -> Result<()> {
-        let filter_account_owners = "QMNeHCGYnLVDn1icRAfQZpjPLBNkfGbSKRB83G5d8KB,11111111111111111111111111111111";
+        let filter_account_owners = "11111111111111111111111111111111";
         let filter_account_mints = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So,3JFC4cB56Er45nWVe29Bhnn5GnwQzSmHVf6eUq9ac91h,6UA3yn28XecAHLTwoCtjfzy3WcyQj1x13bxnH8urUiKt,5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4,4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf,Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8,7iKG16aukdXXw43MowbfrGqXhAoYe51iVR9u2Nf2dCEY,8cn7JcYVjDZesLa3RTt3NXne4WcDw9PdUneQWuByehwW,7HqhfUqig7kekN8FbJCtQ36VgdXKriZWQ62rTve9ZmQ,SoLEao8wTzSfqhuou8rcYsVoLjthVmiXuEjzdNPMnCz";
         self.progress.accounts_counter.inc();
         if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo") && account.data.len() == 1300 { //Dump solend token accounts
@@ -264,6 +273,9 @@ impl<'a> Worker<'a> {
         if filter_account_owners.contains(bs58::encode(account.account_meta.owner.as_ref()).into_string().as_str()) {
             self.insert_account_meta(account)?;
         }
+        if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("Port7uDYB3wk6GJAw4KT1WpTeMtSu9bTcChBHkX2LfR"){ //Port finance accounts
+            self.insert_port(account)?;
+        }
         if account.account_meta.owner == mpl_metadata::id() {
             self.insert_token_metadata(account)?;
         }
@@ -271,6 +283,9 @@ impl<'a> Worker<'a> {
             spl_token::state::Account::LEN => {
                 if let Ok(token_account) = spl_token::state::Account::unpack(account.data) {
                     let token_account_mint = bs58::encode(token_account.mint.as_ref()).into_string();
+                    // if "Dt1Cuau5m5CSmun8hZstjEh9RszxAmejnq7ZaHNcuXfA".contains(token_account_mint.as_str()) {
+                    //     self.insert_port(account, &token_account)?;
+                    // }
                     if !filter_account_mints.contains(token_account_mint.as_str()) && token_account.amount != 1 {
                         return Ok(());
                     }
@@ -436,7 +451,7 @@ INSERT OR REPLACE INTO token_mint (pubkey, mint_authority, supply, decimals, is_
         meta_v1_2: Option<&mpl_metadata::MetadataExtV1_2>,
     ) -> Result<()> {
         let collection = meta_v1_2.as_ref().and_then(|m| m.collection.as_ref());
-        if !meta_v1.data.name.as_str().contains("Raydium Concentrated Liquidity") && !meta_v1.data.name.as_str().contains("Orca Whirlpool Position") { 
+        if !meta_v1.data.name.as_str().contains("Raydium Concentrated Liquidity"){ 
             return Ok(());
         }
         
@@ -565,6 +580,20 @@ INSERT OR REPLACE INTO whirlpool_pools (pubkey, data_len, token_a, token_b, sqrt
             whirlpool.token_mint_a.to_string(),
             whirlpool.token_mint_b.to_string(),
             whirlpool.sqrt_price as i64,
+        ])?;
+        Ok(())
+    }
+
+    fn insert_port(&mut self, account: &StoredAccountMeta) -> Result<()> {        
+        let mut account_insert = self.db.prepare_cached(
+            "\
+INSERT OR REPLACE INTO port (pubkey, owner, data)
+    VALUES (?, ?, ?);",
+        )?;
+        account_insert.insert(params![
+            bs58::encode(account.meta.pubkey).into_string(),
+            bs58::encode(account.account_meta.owner.as_ref()).into_string(),
+            account.data,
         ])?;
         Ok(())
     }

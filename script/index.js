@@ -6,6 +6,7 @@ const axios = require('axios');
 const whirlpool = require("@orca-so/whirlpools-sdk")
 const orca = require("@orca-so/common-sdk")
 const numberToBN = require('number-to-bn');
+const { PortProfileParser } = require('@port.finance/port-sdk');
 
 var data = {}
 var owners = []
@@ -21,7 +22,7 @@ var dataMercurial = []
 var dataSaber = []
 
 
-async function main(){
+function main(){
     mSolHolders();
     orcaWhrilpools();
     orcaAquafarms();
@@ -31,10 +32,10 @@ async function main(){
     mercurial();
     saber();
     friktion();
-    await port();
+    port();
     parseData();
     createDbAndDump();
-    //createJson(); if you want to have the data in a json file (it's much faster)
+    //createJson(); //if you want to have the data in a json file (it's much faster)
     
 
     db.close();
@@ -246,17 +247,24 @@ function friktion(){
     });
 }
 
-async function port(){
+function port(){
     console.info(new Date().toISOString() + " Parsing Port");
+    const result = db.prepare(`SELECT pubkey, owner, data FROM port`).all();
+    result.forEach((row) => {
+        const profile = PortProfileParser(row.data);
+        profile.deposits.forEach((deposit) => {
+            if(deposit.depositReserve == "9gDF5W94RowoDugxT8cM29cX8pKKQitTp2uYVrarBSQ7"){
+                if(dataPort[profile.owner.toBase58()] == undefined){
+                    dataPort[profile.owner.toBase58()] = deposit.depositedAmount.toU64().toNumber()*toUi;
+                }else{
+                    dataPort[profile.owner.toBase58()] += deposit.depositedAmount.toU64().toNumber()*toUi;
+                }
 
-    const portData = await axios.get("https://api-v1.port.finance/collaterals/msol").then((response) => {
-        const data = response.data;
-        data.forEach((user) => {
-            dataPort[user.owner] = Number(user.uiAmount);
-            if(owners.indexOf(user.owner) == -1){
-                owners.push(user.owner);
+                if(owners.indexOf(profile.owner.toBase58()) == -1){
+                    owners.push(profile.owner.toBase58());
+                }
             }
-        });
+        })
     });
 }
 
@@ -280,7 +288,7 @@ function parseData(){
 function createDbAndDump(){
     console.info(new Date().toISOString() + " Filling the DB");
 
-    const db = new Database('/data/msolData.db');
+    const db = new Database('./data/msolData.db');
     db.exec(`CREATE TABLE data (
         owner VARCHAR(255),
         slot INT,
