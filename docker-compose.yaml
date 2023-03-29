@@ -1,0 +1,35 @@
+version: '3'
+
+services:
+
+  snapshot:
+    build:
+      context: ./solana-snapshot-finder
+      dockerfile: Dockerfile-snapshot
+    volumes:
+      - data_volume:/data
+
+  fork:
+    build:
+      context: ./snapshot-etl-fork
+      dockerfile: Dockerfile-fork
+    volumes:
+      - data_volume:/data
+    depends_on:
+      snapshot:
+        condition: service_completed_successfully
+      
+  script:
+    build:
+      context: ./script
+      dockerfile: Dockerfile-script
+    volumes:
+      - data_volume:/data
+    depends_on:
+      fork:
+        condition: service_completed_successfully
+      snapshot:
+        condition: service_completed_successfully
+
+volumes:
+  data_volume:

@@ -1,0 +1,12 @@
+FROM node:19.7.0
+
+WORKDIR /
+
+COPY . .
+
+RUN yarn --no-cache \
+    && rm -rf /usr/local/share/.cache \
+    && rm -rf /root/.cache \
+    && rm -rf /tmp/*
+
+CMD [ "node", "index.js" ]

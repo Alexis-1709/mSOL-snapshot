@@ -1,0 +1,6 @@
+*.log
+target/
+Cargo.lock
+LICENSE.md
+README.md
+Dockerfile-fork

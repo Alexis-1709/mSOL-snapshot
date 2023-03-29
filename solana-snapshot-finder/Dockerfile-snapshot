@@ -1,0 +1,13 @@
+FROM python:3.9.6-alpine3.14
+
+WORKDIR /
+
+COPY . .
+
+RUN apk add --no-cache wget git \
+    && apk add --no-cache --virtual .build-deps gcc musl-dev \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apk del .build-deps \
+    && rm -rf /var/cache/apk/*
+
+CMD [ "python3", "snapshot-finder.py", "--max_latency", "400", "--min_download_speed", "1", "--snapshot_path", "/data" ]
