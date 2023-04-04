@@ -12,11 +12,13 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+RUN rustup override set 1.66.0
+
 RUN cargo install --path=./ --features=standalone --bins \
     && cargo clean
 
 FROM debian
 WORKDIR /
-COPY --from=builder /root/.cargo/bin/solana-snapshot-fork /root/.cargo/bin/solana-snapshot-fork
+COPY --from=builder /root/.cargo/bin/solana-snapshot-fork /usr/local/bin/solana-snapshot-fork
 
 CMD ["solana-snapshot-fork", "/data/snapshot_downloaded1.tar.zst", "--sqlite-out", "/data/snapshot.db"]
