@@ -20,6 +20,22 @@ use crate::state::{Obligation};
 use crate::mpl_metadata;
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::fs::File;
+use std::io::Read;
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Filters {
+    account_owners: String,
+    account_mints: String,
+    whirlpool_pool_address: String,
+}
+
+static mut ACCOUNT_OWNERS: String = String::new();
+static mut ACCOUNT_MINTS: String = String::new();
+static mut WHIRLPOOL_POOL_ADDRESS: String = String::new();
+
 pub(crate) struct SqliteIndexer {
     db: Connection,
     db_path: PathBuf,
@@ -223,6 +239,18 @@ CREATE TABLE token_metadata (
     }
 
     pub(crate) fn insert_all(mut self, iterator: AppendVecIterator) -> Result<IndexStats> {
+        // Read the JSON file
+        let mut file = File::open("filters.json").expect("Failed to open file");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+        .expect("Failed to read file");
+        let filters: Filters = serde_json::from_str(&contents).expect("Failed to deserialize");
+        unsafe {
+            ACCOUNT_OWNERS = filters.account_owners;
+            ACCOUNT_MINTS = filters.account_mints;
+            WHIRLPOOL_POOL_ADDRESS = filters.whirlpool_pool_address;
+        }
+
         let mut worker = Worker {
             db: &self.db,
             progress: Arc::clone(&self.progress),
@@ -258,8 +286,6 @@ impl<'a> AppendVecConsumer for Worker<'a> {
 
 impl<'a> Worker<'a> {
     fn insert_account(&mut self, account: &StoredAccountMeta) -> Result<()> {
-        let filter_account_owners = "11111111111111111111111111111111";
-        let filter_account_mints = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So,3JFC4cB56Er45nWVe29Bhnn5GnwQzSmHVf6eUq9ac91h,6UA3yn28XecAHLTwoCtjfzy3WcyQj1x13bxnH8urUiKt,5ijRoAHVgd5T5CNtK5KDRUBZ7Bffb69nktMj5n6ks6m4,4xTpJ4p76bAeggXoYywpCCNKfJspbuRzZ79R7pRhbqSf,Afvh7TWfcT1E9eEEWJk17fPjnqk36hreTJJK5g3s4fm8,7iKG16aukdXXw43MowbfrGqXhAoYe51iVR9u2Nf2dCEY,8cn7JcYVjDZesLa3RTt3NXne4WcDw9PdUneQWuByehwW,7HqhfUqig7kekN8FbJCtQ36VgdXKriZWQ62rTve9ZmQ,SoLEao8wTzSfqhuou8rcYsVoLjthVmiXuEjzdNPMnCz";
         self.progress.accounts_counter.inc();
         if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo") && account.data.len() == 1300 { //Dump solend token accounts
             self.insert_metadata_solend(account)?;    
@@ -267,11 +293,13 @@ impl<'a> Worker<'a> {
         if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc") && account.data.len() == 216 { //Dump only whirlpool positions accounts
             self.insert_orca(account)?;
         }
-        if bs58::encode(account.meta.pubkey).into_string().contains("AiMZS5U3JMvpdvsr1KeaMiS354Z1DeSg5XjA4yYRxtFf") { //Whirlpool pool address
-            self.insert_whirlpool_pool(account)?;
-        }
-        if filter_account_owners.contains(bs58::encode(account.account_meta.owner.as_ref()).into_string().as_str()) {
-            self.insert_account_meta(account)?;
+        unsafe {
+            if WHIRLPOOL_POOL_ADDRESS.contains(&bs58::encode(account.meta.pubkey).into_string()) { //Whirlpool pool address
+                self.insert_whirlpool_pool(account)?;
+            }
+            if ACCOUNT_OWNERS.contains(bs58::encode(account.account_meta.owner.as_ref()).into_string().as_str()) {
+                self.insert_account_meta(account)?;
+            }
         }
         if bs58::encode(account.account_meta.owner.as_ref()).into_string().contains("Port7uDYB3wk6GJAw4KT1WpTeMtSu9bTcChBHkX2LfR"){ //Port finance accounts
             self.insert_port(account)?;
@@ -283,11 +311,10 @@ impl<'a> Worker<'a> {
             spl_token::state::Account::LEN => {
                 if let Ok(token_account) = spl_token::state::Account::unpack(account.data) {
                     let token_account_mint = bs58::encode(token_account.mint.as_ref()).into_string();
-                    // if "Dt1Cuau5m5CSmun8hZstjEh9RszxAmejnq7ZaHNcuXfA".contains(token_account_mint.as_str()) {
-                    //     self.insert_port(account, &token_account)?;
-                    // }
-                    if !filter_account_mints.contains(token_account_mint.as_str()) && token_account.amount != 1 {
-                        return Ok(());
+                    unsafe {
+                        if !ACCOUNT_MINTS.contains(token_account_mint.as_str()) && token_account.amount != 1 {
+                            return Ok(());
+                        }
                     }
                     self.insert_account_meta(account)?;
                     if account.account_meta.owner == spl_token::id() {
@@ -298,8 +325,10 @@ impl<'a> Worker<'a> {
             spl_token::state::Mint::LEN => {
                 if let Ok(token_mint) = spl_token::state::Mint::unpack(account.data) {
                     let mint_pubkey = bs58::encode(account.meta.pubkey.as_ref()).into_string();
-                    if !filter_account_mints.contains(mint_pubkey.as_str()) {
-                        return Ok(());
+                    unsafe {
+                        if !ACCOUNT_MINTS.contains(mint_pubkey.as_str()) {
+                            return Ok(());
+                        }
                     }
                     self.insert_token_mint(account, &token_mint)?;
                 }
@@ -542,8 +571,10 @@ INSERT OR REPLACE INTO solend (
     fn insert_orca(&mut self, account: &StoredAccountMeta) -> Result<()> {
         let mut account_data = account.data;
         let position = Position::try_deserialize( &mut account_data)?;
-        if bs58::encode(position.whirlpool).into_string() != "AiMZS5U3JMvpdvsr1KeaMiS354Z1DeSg5XjA4yYRxtFf" {
-            return Ok(());
+        unsafe {
+            if !WHIRLPOOL_POOL_ADDRESS.contains(&bs58::encode(position.whirlpool).into_string()) {
+                return Ok(());
+            }
         }
         let sqrt_price_lower = sqrt_price_from_tick_index(position.tick_lower_index);
         let sqrt_price_upper = sqrt_price_from_tick_index(position.tick_upper_index);
